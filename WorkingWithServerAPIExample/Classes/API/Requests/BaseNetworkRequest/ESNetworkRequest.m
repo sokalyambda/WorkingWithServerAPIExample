@@ -3,17 +3,10 @@
 //  WorkWithServerAPI
 //
 //  Created by EugeneS on 30.01.15.
-//  Copyright (c) 2015 Connexity. All rights reserved.
+//  Copyright (c) 2015 ThinkMobiles. All rights reserved.
 //
 
-/*
- All request have general structure:
- 
-*/
-
 #import "ESNetworkRequest.h"
-
-#import "BZRRequests.h"
 
 @implementation ESNetworkRequest
 
@@ -22,7 +15,9 @@
 - (id)init
 {
     if (self = [super init]) {
-        _path = @"";
+
+        _action = @"";
+        
         if (!_parameters) {
             _parameters = [NSMutableDictionary dictionary];
         }
@@ -32,7 +27,6 @@
         if(!_files) {
             _files = [NSMutableArray array];
         }
-        _retryIfConnectionFailed = YES;
     }
     return self;
 }
@@ -50,22 +44,15 @@
         return NO;
     }
     _parameters = [NSMutableDictionary dictionaryWithDictionary:data];
-    _path = _action;
     
     return YES;
 }
 
-- (BOOL)parseResponseSucessfully:(id)responseObject
+- (BOOL)prepareResponseObjectForParsing:(id)responseObject
 {
     BOOL parseJSONData = NO;
     
-    //This needs because response from API for this request is empty
-    if ([self isKindOfClass:[BZRForgotPasswordRequest class]] || [self isKindOfClass:[BZRDeleteTakenSurveysRequest class]]) {
-        return YES;
-    }
-    
     if (!responseObject) {
-        LOG_NETWORK(@"Error: Response Is Empty");
         _error = [NSError errorWithDomain:[NSString stringWithFormat:@"%@ - response is empty", NSStringFromClass([self class])]
                                      code:-3000
                                  userInfo:@{NSLocalizedDescriptionKey: @"Response is empty."}];
@@ -84,40 +71,41 @@
         json = responseObject;
     }
     
-    DLog(@"%@",json);
+    NSLog(@"JSON:\n %@", json);
     
     if (error) {
         _error = error;
     } else {
-        if ([json isKindOfClass:[NSDictionary class]] || [json isKindOfClass:[NSArray class]]) {
+        
+        @try {
+            NSError* error = nil;
+            parseJSONData = [self parseJSONDataSucessfully:json error:&error];
             
-            @try {
-                NSError* error = nil;
-                parseJSONData = [self parseJSONDataSucessfully:json error:&error];
-                
-                if (!_error) {
-                    _error = error;
-                }
+            if (!_error) {
+                _error = error;
             }
-            @catch (NSException *exception) {
-                _error = [NSError errorWithDomain:@"com.thinkmobiles"
-                                             code:-4000
-                                         userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"name:%@\nreason:%@", exception.name, exception.reason]}];
-            }
-            @finally {
-                
-            }
+        }
+        @catch (NSException *exception) {
+            _error = [NSError errorWithDomain:@"com.thinkmobiles"
+                                         code:-4000
+                                     userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"name:%@\nreason:%@", exception.name, exception.reason]}];
         }
     }
     
     return parseJSONData;
 }
 
+/**
+ *  Should be overrided in subclasses
+ */
 - (BOOL)parseJSONDataSucessfully:(id)responseObject error:(NSError* __autoreleasing  *)error
 {
     return YES;
 }
 
+/**
+ *  Check the parameters here, if needed
+ */
 - (BOOL)prepareAndCheckRequestParameters
 {
     return YES;

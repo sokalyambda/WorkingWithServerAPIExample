@@ -10,4 +10,6 @@
 
 @interface ESGetRandomCatRequest : ESNetworkRequest
 
+@property (strong, nonatomic) NSURL *catImageURL;
+
 @end

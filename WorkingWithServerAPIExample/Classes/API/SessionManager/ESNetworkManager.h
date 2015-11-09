@@ -3,15 +3,12 @@
 //  WorkWithServerAPI
 //
 //  Created by EugeneS on 30.01.15.
-//  Copyright (c) 2015 Connexity. All rights reserved.
+//  Copyright (c) 2015 ThinkMobiles. All rights reserved.
 //
 
-typedef enum : NSUInteger {
-    BZRSessionTypeApplication,
-    BZRSessionTypeUser
-} BZRSessionType;
+#import <Foundation/Foundation.h>
 
-#import "BZRNetworkOperation.h"
+#import "ESNetworkOperation.h"
 
 typedef void (^CleanBlock)();
 
@@ -25,12 +22,8 @@ typedef void (^CleanBlock)();
 - (void)cancelAllOperations;
 - (void)cleanManagersWithCompletionBlock:(CleanBlock)block;
 
-- (void)enqueueOperation:(BZRNetworkOperation*)operation success:(SuccessOperationBlock)success failure:(FailureOperationBlock)failure;
-- (BZRNetworkOperation*)createOperationWithNetworkRequest:(BZRNetworkRequest*)networkRequest success:(SuccessOperationBlock)success failure:(FailureOperationBlock)failure;
-
-//session validation
-- (void)validateSessionWithType:(BZRSessionType)sessionType onSuccess:(SuccessBlock)success onFailure:(FailureBlock)failure;
-- (BOOL)isSessionValidWithType:(BZRSessionType)sessionType;
+- (void)enqueueOperation:(ESNetworkOperation*)operation success:(SuccessOperationBlock)success failure:(FailureOperationBlock)failure;
+- (ESNetworkOperation*)createOperationWithNetworkRequest:(ESNetworkRequest*)networkRequest success:(SuccessOperationBlock)success failure:(FailureOperationBlock)failure;
 
 //check whether operation is in process
 - (BOOL)isOperationInProcess;

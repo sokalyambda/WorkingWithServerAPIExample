@@ -3,45 +3,37 @@
 //  WorkWithServerAPI
 //
 //  Created by EugeneS on 30.01.15.
-//  Copyright (c) 2015 Connexity. All rights reserved.
+//  Copyright (c) 2015 ThinkMobiles. All rights reserved.
 //
 
+#import <Foundation/Foundation.h>
+
 typedef enum : NSUInteger {
-    BZRRequestSerializationTypeJSON,
-    BZRRequestSerializationTypeHTTP
-} BZRRequestSerializationType;
+    ESRequestSerializationTypeJSON,
+    ESRequestSerializationTypeHTTP
+} ESRequestSerializationType;
 
 @interface ESNetworkRequest : NSObject {
-    NSString            *_path;
+    @protected
     NSMutableDictionary *_parameters;
     NSString            *_method;
     NSMutableDictionary *_customHeaders;
     NSError             *_error;
-    
-    BOOL                _retryIfConnectionFailed;
-    BOOL                _applicationAuthorizationRequired;
-    BOOL                _userAuthorizationRequired;
+    NSString            *_action;
+    ESRequestSerializationType _serializationType;
 }
 
-@property (strong, nonatomic, readonly) NSString *path;
+@property (strong, nonatomic, readonly) NSString *action;
 @property (strong, nonatomic, readonly) NSMutableDictionary *parameters;
 @property (strong, nonatomic, readonly) NSString *method;
 @property (strong, nonatomic, readonly) NSMutableDictionary *customHeaders;
-
-//depends on API requirements
-@property (assign, nonatomic, readonly) BOOL applicationAuthorizationRequired;
-@property (assign, nonatomic, readonly) BOOL userAuthorizationRequired;
-
-@property (assign, nonatomic, readonly) BOOL retryIfConnectionFailed;
-
 @property (strong, nonatomic, readonly) NSMutableArray *files;
 @property (strong, nonatomic) NSError *error;
-@property (strong, nonatomic) NSString *action;
 
-@property (assign, nonatomic) BZRRequestSerializationType serializationType;
+@property (assign, nonatomic, readonly) ESRequestSerializationType serializationType;
 
 - (BOOL)prepareAndCheckRequestParameters;
-- (BOOL)parseResponseSucessfully:(id)responseObject;
+- (BOOL)prepareResponseObjectForParsing:(id)responseObject;
 - (BOOL)parseJSONDataSucessfully:(id)responseObject error:(NSError* __autoreleasing *)error;
 - (BOOL)setParametersWithParamsData:(NSDictionary*)data;
 

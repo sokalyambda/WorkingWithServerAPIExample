@@ -3,82 +3,60 @@
 //  WorkWithServerAPI
 //
 //  Created by EugeneS on 30.01.15.
-//  Copyright (c) 2015 Connexity. All rights reserved.
+//  Copyright (c) 2015 ThinkMobiles. All rights reserved.
 //
 
 #import "ESNetworkFacade.h"
 
-#import "BZRSessionManager.h"
+#import "ESNetworkManager.h"
 
-#import "BZRRequests.h"
+#import "ESRequests.h"
 
+#import <AFNetworking/AFNetworking.h>
 #import <AFNetworking/AFNetworkActivityIndicatorManager.h>
 
-static BZRSessionManager *sharedHTTPClient = nil;
+static ESNetworkManager *sharedHTTPClient = nil;
 
-NSString *defaultBaseURLString = @"https://api.bizraterewards.com/v1/";
-static NSString *_baseURLString;
+static NSString *const kDefaultBaseURLString = @"http://random.cat/";
 
 @implementation ESNetworkFacade
 
-#pragma mark - Accessors
-
-+ (NSString *)baseURLString
-{
-    @synchronized(self) {
-        BZREnvironment *savedEnvironment = [BZREnvironmentService environmentFromDefaultsForKey:CurrentAPIEnvironment];
-        
-        if (!savedEnvironment) {
-            savedEnvironment = [BZREnvironmentService defaultEnvironment];
-            [BZREnvironmentService setEnvironment:savedEnvironment toDefaultsForKey:CurrentAPIEnvironment];
-        }
-        
-        if (!_baseURLString && savedEnvironment) {
-            _baseURLString = savedEnvironment.apiEndpointURLString;
-        }
-        return _baseURLString;
-    }
-}
-
-+ (void)setBaseURLString:(NSString *)baseURLString
-{
-    @synchronized(self) {
-        _baseURLString = baseURLString;
-    }
-}
-
 #pragma mark - Lifecycle
 
-+ (BZRSessionManager *)HTTPClient
++ (ESNetworkManager *)HTTPClient
 {
-    if (!sharedHTTPClient) {
-        [self initHTTPClientWithRootPath:[self baseURLString] withCompletion:nil];
+    @synchronized(self) {
+        if (!sharedHTTPClient) {
+            [self initHTTPClientWithRootPath:kDefaultBaseURLString withCompletion:nil];
+        }
+        return sharedHTTPClient;
     }
-    return sharedHTTPClient;
 }
 
 + (void)initHTTPClientWithRootPath:(NSString*)baseURL withCompletion:(void(^)(void))completion
 {
-    if (sharedHTTPClient) {
-        
-        [sharedHTTPClient cleanManagersWithCompletionBlock:^{
+    @synchronized(self) {
+        if (sharedHTTPClient) {
             
-            sharedHTTPClient = nil;
-            AFNetworkActivityIndicatorManager.sharedManager.enabled = NO;
-            
-            sharedHTTPClient = [[BZRSessionManager alloc] initWithBaseURL:[NSURL URLWithString:baseURL]];
-
+            [sharedHTTPClient cleanManagersWithCompletionBlock:^{
+                
+                sharedHTTPClient = nil;
+                AFNetworkActivityIndicatorManager.sharedManager.enabled = NO;
+                
+                sharedHTTPClient = [[ESNetworkManager alloc] initWithBaseURL:[NSURL URLWithString:baseURL]];
+                
+                AFNetworkActivityIndicatorManager.sharedManager.enabled = YES;
+                
+                if (completion) {
+                    completion();
+                }
+            }];
+        } else {
+            sharedHTTPClient = [[ESNetworkManager alloc] initWithBaseURL:[NSURL URLWithString:baseURL]];
             AFNetworkActivityIndicatorManager.sharedManager.enabled = YES;
-            
             if (completion) {
                 completion();
             }
-        }];
-    } else {
-        sharedHTTPClient = [[BZRSessionManager alloc] initWithBaseURL:[NSURL URLWithString:baseURL]];
-        AFNetworkActivityIndicatorManager.sharedManager.enabled = YES;
-        if (completion) {
-            completion();
         }
     }
 }
@@ -103,9 +81,36 @@ static NSString *_baseURLString;
     return [[self HTTPClient] isOperationInProcess];
 }
 
+/**
+ *  Check reachability
+ */
 + (BOOL)isInternetReachable
 {
     return [AFNetworkReachabilityManager sharedManager].networkReachabilityStatus != AFNetworkReachabilityStatusNotReachable;
+}
+
+#pragma mark - Requests Builder
+
++ (ESNetworkOperation *)getRandomCatImageURLOnSuccess:(SuccessBlock)success
+                                              onFailure:(FailureBlock)failure
+{
+    ESGetRandomCatRequest *request = [[ESGetRandomCatRequest alloc] init];
+    
+    ESNetworkOperation* operation = [[self  HTTPClient] createOperationWithNetworkRequest:request success:^(ESNetworkOperation *operation) {
+        
+        ESGetRandomCatRequest *request = (ESGetRandomCatRequest *)operation.networkRequest;
+        
+        if (success) {
+            success(request.catImageURL);
+        }
+        
+    } failure:^(ESNetworkOperation *operation, NSError *error, BOOL isCanceled) {
+        if (failure) {
+            failure(error, isCanceled);
+        }
+    }];
+    
+    return operation;
 }
 
 @end

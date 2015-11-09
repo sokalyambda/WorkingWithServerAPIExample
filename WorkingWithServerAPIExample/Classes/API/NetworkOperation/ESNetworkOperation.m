@@ -3,25 +3,20 @@
 //  WorkWithServerAPI
 //
 //  Created by EugeneS on 30.01.15.
-//  Copyright (c) 2015 Connexity. All rights reserved.
+//  Copyright (c) 2015 ThinkMobiles. All rights reserved.
 //
 
-#define TOKEN_EXPIRED_TIME 86400.f
-
 #import "ESNetworkOperation.h"
+#import "ESNetworkRequest.h"
 
-#import "BZRNetworkRequest.h"
-
-#import "BZRProjectFacade.h"
-
+#import "ESNetworkFacade.h"
 #import "ESNetworkManager.h"
+#import "ESNetworkRequest.h"
 
-#import "NSError+HTTPResponseStatusCode.h"
+#import <AFNetworking.h>
 
 static NSString *const kCountOfBytesSent = @"countOfBytesSent";
 static NSString *const kCountOfBytesReceived = @"countOfBytesReceived";
-
-static NSInteger const kNotAuthorizedStatusCode = 401.f;
 
 NS_CLASS_AVAILABLE(10_9, 7_0)
 @interface DataTask : NSURLSessionDataTask @end
@@ -34,7 +29,7 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
 
 @interface ESNetworkOperation ()
 
-@property (strong, nonatomic, readwrite) BZRNetworkRequest *networkRequest;
+@property (strong, nonatomic, readwrite) ESNetworkRequest *networkRequest;
 @property (strong, nonatomic) NSMutableURLRequest *urlRequest;
 
 @property (strong, nonatomic) AFHTTPRequestOperation *operation;
@@ -65,7 +60,7 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
 
 #pragma mark - Lifecycle
 
-- (id)initWithNetworkRequest:(BZRNetworkRequest*)networkRequest
+- (id)initWithNetworkRequest:(ESNetworkRequest*)networkRequest
               networkManager:(id)manager
                        error:(NSError *__autoreleasing *)error
 {
@@ -77,7 +72,6 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
                                                        code:-2999
                                                    userInfo:@{NSLocalizedDescriptionKey: @"Parameters didn't pass validation."}];
         }
-        LOG_NETWORK(@"ERROR: parameters didn't pass check. Aborting operation.");
         
         if(error) {
             *error = networkRequest.error;
@@ -101,8 +95,8 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
     
     if ([networkRequest.files count] > 0) {
         self.urlRequest = [serializer  multipartFormRequestWithMethod:@"POST"
-                                                            URLString:[[NSURL URLWithString:networkRequest.path
-                                                                              relativeToURL:[BZRProjectFacade HTTPClient].baseURL] absoluteString]
+                                                            URLString:[[NSURL URLWithString:networkRequest.action
+                                                                              relativeToURL:[ESNetworkFacade HTTPClient].baseURL] absoluteString]
                                                            parameters:networkRequest.parameters
                                             constructingBodyWithBlock:^(id<AFMultipartFormData> formData) {
                                                 
@@ -114,13 +108,12 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
         
     } else {
         self.urlRequest = [serializer requestWithMethod:networkRequest.method
-                                              URLString:[NSString stringWithFormat:@"%@%@", [BZRProjectFacade HTTPClient].baseURL, networkRequest.path]
+                                              URLString:[NSString stringWithFormat:@"%@%@", [ESNetworkFacade HTTPClient].baseURL, networkRequest.action]
                                              parameters:networkRequest.parameters
                                                   error:error];
     }
 
     if (*error) {
-        LOG_NETWORK(@"ERROR: serialize request: %@", [*error localizedDescription]);
         return (self = [super init]);
     }
     
@@ -128,7 +121,7 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
     [self.urlRequest setHTTPShouldHandleCookies:NO];
     
     //set custom headers
-    WEAK_SELF;
+    __weak typeof(self)weakSelf = self;;
     [networkRequest.customHeaders enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
         [weakSelf.urlRequest addValue:obj forHTTPHeaderField:key];
     }];
@@ -138,12 +131,9 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
         _networkManager = manager;
         _networkRequest = networkRequest;
         
-        WEAK_SELF;
         void (^SuccessOperationBlock)(id operation, id responseObject) = ^(id operation, id responseObject) {
             
-            BOOL success = NO;
-            
-            success = [weakSelf.networkRequest parseResponseSucessfully:responseObject];
+            BOOL success = [weakSelf.networkRequest prepareResponseObjectForParsing:responseObject];
             
             if (success) {
                 if (weakSelf.successBlock) {
@@ -165,14 +155,6 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
                 requestCanceled = YES;
             } else {
                 weakSelf.networkRequest.error = error;
-            }
-            
-            //get status code of httpResponse
-            if ([operation isKindOfClass:[NSHTTPURLResponse class]]) {
-                NSInteger statusCode = ((NSHTTPURLResponse *)operation).statusCode;
-                DLog(@"status code %d", statusCode);
-                
-                weakSelf.networkRequest.error.HTTPResponseStatusCode = statusCode;
             }
             
             if (weakSelf.failureBlock) {
@@ -218,7 +200,7 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
     return self;
 }
 
--(void)dealloc
+- (void)dealloc
 {
     if (_progressBlock) {
         if (_uploadTask) {
@@ -234,19 +216,6 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
 {
     self.successBlock = success;
     self.failureBlock = failure;
-}
-
-/**
- *  Print description
- */
-- (void)printRequestData:(NSURLRequest*)request withNumber:(NSInteger)number
-{
-    LOG_NETWORK(@"Request >>> : %li \n%@\nmethod - %@\n%@\nHeaders\n%@",
-                (long)number,
-                request.URL.absoluteString,
-                request.HTTPMethod,
-                [[NSString alloc] initWithData:request.HTTPBody encoding:NSUTF8StringEncoding],
-                request.allHTTPHeaderFields);
 }
 
 #pragma mark - Public methods
@@ -286,10 +255,8 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
         [_downloadTask resume];
     }
     if (!_downloadTask) {
-        [BZRProjectFacade HTTPClient].requestNumber++;
-        self.requestNumber = [BZRProjectFacade HTTPClient].requestNumber;
-        
-        [self printRequestData:self.urlRequest withNumber:self.requestNumber];
+        [ESNetworkFacade HTTPClient].requestNumber++;
+        self.requestNumber = [ESNetworkFacade HTTPClient].requestNumber;
     }
 }
 
@@ -368,8 +335,6 @@ NS_CLASS_AVAILABLE(10_9, 7_0)
         if (bytesSend > totalBytesSend) {
             bytesSend = totalBytesSend;
         }
-        
-        DLog(@"%@ + %ld + %ld", self, (long)bytesSend, (long)totalBytesSend);
         
         self.progressBlock(self, bytesSend, totalBytesSend);
     }

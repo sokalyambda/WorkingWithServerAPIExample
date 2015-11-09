@@ -3,22 +3,14 @@
 //  WorkWithServerAPI
 //
 //  Created by EugeneS on 30.01.15.
-//  Copyright (c) 2015 Connexity. All rights reserved.
+//  Copyright (c) 2015 ThinkMobiles. All rights reserved.
 //
 
 #import "ESNetworkManager.h"
-#import "BZRFailedOperationManager.h"
+#import "ESNetworkOperation.h"
+#import "ESNetworkRequest.h"
 
-#import "BZRNetworkOperation.h"
-
-#import "BZRReachabilityHelper.h"
-
-#import "BZRErrorHandler.h"
-
-#import "BZRAlertFacade.h"
-
-#import "BZRRenewSessionTokenRequest.h"
-#import "BZRGetClientCredentialsRequest.h"
+#import <AFNetworking.h>
 
 static CGFloat const kRequestTimeInterval = 60.f;
 static NSInteger const kMaxConcurentRequests = 100.f;
@@ -32,7 +24,6 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
 
 @property (strong, nonatomic) AFHTTPSessionManager *sessionManager;
 @property (strong, nonatomic) AFHTTPRequestOperationManager *requestOperationManager;
-@property (strong, nonatomic) BZRFailedOperationManager *failedOperationManager;
 
 @property (assign, nonatomic) AFNetworkReachabilityStatus reachabilityStatus;
 
@@ -51,14 +42,6 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
 @implementation ESNetworkManager
 
 #pragma mark - Accessors
-
-- (BZRFailedOperationManager *)failedOperationManager
-{
-    if (!_failedOperationManager) {
-        _failedOperationManager = [BZRFailedOperationManager sharedManager];
-    }
-    return _failedOperationManager;
-}
 
 - (AFJSONRequestSerializer *)JSONRequestSerializer
 {
@@ -107,11 +90,11 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
         
         _operationsQueue = [NSMutableArray array];
         
-        WEAK_SELF;
         [[AFNetworkReachabilityManager sharedManager] startMonitoring];
         
-        weakSelf.reachabilityStatus = [AFNetworkReachabilityManager sharedManager].networkReachabilityStatus;
+        self.reachabilityStatus = [AFNetworkReachabilityManager sharedManager].networkReachabilityStatus;
         
+        __weak typeof(self)weakSelf = self;
         [[AFNetworkReachabilityManager sharedManager] setReachabilityStatusChangeBlock:^(AFNetworkReachabilityStatus status) {
             
             weakSelf.reachabilityStatus = status;
@@ -136,7 +119,6 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
                     break;
                 }
             }
-            DLog(@"%@", stateText);
 #endif
         }];
 
@@ -153,7 +135,8 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
     if ([NSURLSession class]) {
         self.cleanCount = 0;
         self.cleanBlock = block;
-        WEAK_SELF;
+        
+        __weak typeof(self)weakSelf = self;
         [_sessionManager setSessionDidBecomeInvalidBlock:^(NSURLSession *session, NSError *error) {
             [weakSelf syncCleans];
             weakSelf.sessionManager = nil;
@@ -197,14 +180,9 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
 
 #pragma mark - Operation cycle
 
-- (BZRNetworkOperation*)createOperationWithNetworkRequest:(BZRNetworkRequest*)networkRequest success:(SuccessOperationBlock)success
+- (ESNetworkOperation*)createOperationWithNetworkRequest:(ESNetworkRequest*)networkRequest success:(SuccessOperationBlock)success
                                                   failure:(FailureOperationBlock)failure
 {
-    //set success&failure blocks to failed operation manager. This step adds a possibility to restart operation if connection failed
-    if (networkRequest.retryIfConnectionFailed) {
-        [self.failedOperationManager setFailedOperationSuccessBlock:success andFailureBlock:failure];
-    }
-    
     NSError *error = nil;
     id manager = nil;
     
@@ -214,12 +192,13 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
         manager = _requestOperationManager;
     }
     
+    //Set needed request serializer
     switch (networkRequest.serializationType) {
-        case BZRRequestSerializationTypeHTTP:
+        case ESRequestSerializationTypeHTTP:
             [(AFHTTPSessionManager *)manager setRequestSerializer:self.HTTPRequestSerializer];
             break;
             
-        case BZRRequestSerializationTypeJSON:
+        case ESRequestSerializationTypeJSON:
             [(AFHTTPSessionManager *)manager setRequestSerializer:self.JSONRequestSerializer];
             break;
             
@@ -227,33 +206,23 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
             break;
     }
     
-    BZRNetworkOperation *operation = [[BZRNetworkOperation alloc] initWithNetworkRequest:networkRequest networkManager:manager error:&error];
+    ESNetworkOperation *operation = [[ESNetworkOperation alloc] initWithNetworkRequest:networkRequest networkManager:manager error:&error];
     
-    WEAK_SELF;
+    __weak typeof(self)weakSelf = self;
     if (error && failure) {
         failure(operation ,error, NO);
     } else {
-        [self enqueueOperation:operation success:^(BZRNetworkOperation *operation) {
+        [self enqueueOperation:operation success:^(ESNetworkOperation *operation) {
             
             [weakSelf finishOperationInQueue:operation];
             if (success) {
                 success(operation);
             }
             
-        } failure:^(BZRNetworkOperation *operation, NSError *error, BOOL isCanceled) {
+        } failure:^(ESNetworkOperation *operation, NSError *error, BOOL isCanceled) {
             
             [weakSelf finishOperationInQueue:operation];
-            
-            if ([BZRErrorHandler errorIsNetworkError:error] && operation.networkRequest.retryIfConnectionFailed) {
-                
-                [BZRAlertFacade showRetryInternetConnectionAlertForController:nil withCompletion:^(BOOL retry) {
-                    if (!retry && failure) {
-                        failure(operation, error, isCanceled);
-                    } else {
-                        [weakSelf.failedOperationManager addAndRestartFailedOperation:operation];
-                    }
-                }];
-            } else if (failure) {
+            if (failure) {
                 failure(operation, error, isCanceled);
             }
         }];
@@ -261,20 +230,11 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
     return operation;
 }
 
-- (void)enqueueOperation:(BZRNetworkOperation*)operation success:(SuccessOperationBlock)success failure:(FailureOperationBlock)failure
+- (void)enqueueOperation:(ESNetworkOperation*)operation success:(SuccessOperationBlock)success failure:(FailureOperationBlock)failure
 {
-    WEAK_SELF;
-    //check reachability
-    [BZRReachabilityHelper checkConnectionOnSuccess:^{
-        
-        [operation setCompletionBlockAfterProcessingWithSuccess:success failure:failure];
-        [weakSelf addOperationToQueue:operation];
-        
-    } failure:^(NSError *error) {
-        if (failure) {
-            failure(operation, error, NO);
-        }
-    }];
+    //check reachability here
+    [operation setCompletionBlockAfterProcessingWithSuccess:success failure:failure];
+    [self addOperationToQueue:operation];
 }
 
 /**
@@ -283,12 +243,10 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
 - (void)cancelAllOperations
 {
     if ([NSURLSession class]) {
-        @autoreleasepool {
-            for (BZRNetworkOperation *operation in self.operationsQueue) {
-                [operation cancel];
-            }
-            [self.sessionManager.operationQueue cancelAllOperations];
+        for (ESNetworkOperation *operation in self.operationsQueue) {
+            [operation cancel];
         }
+        [self.sessionManager.operationQueue cancelAllOperations];
     } else {
         [self.requestOperationManager.operationQueue cancelAllOperations];
     }
@@ -301,14 +259,12 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
  */
 - (BOOL)isOperationInProcess
 {
-    @autoreleasepool {
-        for (BZRNetworkOperation *operation in self.operationsQueue) {
-            if ([operation isInProcess]) {
-                return YES;
-            }
+    for (ESNetworkOperation *operation in self.operationsQueue) {
+        if ([operation isInProcess]) {
+            return YES;
         }
-        return NO;
     }
+    return NO;
 }
 
 /**
@@ -316,7 +272,7 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
  *
  *  @param operation Operation that has to be removed
  */
-- (void)finishOperationInQueue:(BZRNetworkOperation*)operation
+- (void)finishOperationInQueue:(ESNetworkOperation*)operation
 {
     [self.operationsQueue removeObject:operation];
 }
@@ -326,7 +282,7 @@ static NSString *const kCleanSessionLock = @"CleanSessionLock";
  *
  *  @param operation Operation that has to be added to queue
  */
-- (void)addOperationToQueue:(BZRNetworkOperation*)operation
+- (void)addOperationToQueue:(ESNetworkOperation*)operation
 {
     [self.operationsQueue addObject:operation];
     

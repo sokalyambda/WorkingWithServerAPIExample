@@ -8,30 +8,38 @@
 
 #import "ESCatController.h"
 
+#import "ESNetworkFacade.h"
+
+#import <MBProgressHUD/MBProgressHUD.h>
+
 @interface ESCatController ()
+
+@property (weak, nonatomic) IBOutlet UIImageView *catImageView;
 
 @end
 
 @implementation ESCatController
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    // Do any additional setup after loading the view.
-}
+#pragma mark - Actions
 
-- (void)didReceiveMemoryWarning {
-    [super didReceiveMemoryWarning];
-    // Dispose of any resources that can be recreated.
+- (IBAction)loadNewCatClick:(id)sender
+{
+    __weak typeof(self)weakSelf = self;
+    [MBProgressHUD showHUDAddedTo:self.view animated:YES];
+    [ESNetworkFacade getRandomCatImageURLOnSuccess:^(NSURL *catImageURL) {
+        
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+            NSData *imageData = [[NSData alloc] initWithContentsOfURL:catImageURL];
+            UIImage *catImage = [UIImage imageWithData:imageData];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [MBProgressHUD hideAllHUDsForView:weakSelf.view animated:YES];
+                weakSelf.catImageView.image = catImage;
+            });
+        });
+        
+    } onFailure:^(NSError *error, BOOL isCanceled) {
+        [MBProgressHUD hideAllHUDsForView:weakSelf.view animated:YES];
+    }];
 }
-
-/*
-#pragma mark - Navigation
-
-// In a storyboard-based application, you will often want to do a little preparation before navigation
-- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
-    // Get the new view controller using [segue destinationViewController].
-    // Pass the selected object to the new view controller.
-}
-*/
 
 @end

@@ -3,32 +3,30 @@
 //  WorkWithServerAPI
 //
 //  Created by EugeneS on 30.01.15.
-//  Copyright (c) 2015 eugenity. All rights reserved.
+//  Copyright (c) 2015 ThinkMobiles. All rights reserved.
 //
 
-#import "BZRSessionManager.h"
+#import <Foundation/Foundation.h>
 
-@class BZRUserProfile, BZRLocationEvent;
+#import "ESNetworkManager.h"
 
 @interface ESNetworkFacade : NSObject
 
-+ (BZRSessionManager *)HTTPClient;
++ (ESNetworkManager *)HTTPClient;
 
-+ (NSString *)baseURLString;
-+ (void)setBaseURLString:(NSString *)baseURLString;
 + (void)initHTTPClientWithRootPath:(NSString*)baseURL withCompletion:(void(^)(void))completion;
 
 //internet checking
 + (BOOL)isInternetReachable;
-
-//session validation
-+ (BOOL)isUserSessionValid;
-+ (BOOL)isFacebookSessionValid;
 
 //cancel operations
 + (void)cancelAllOperations;
 
 //check whether any operation is in process
 + (BOOL)isOperationInProcess;
+
+//Requests Builder
++ (ESNetworkOperation *)getRandomCatImageURLOnSuccess:(SuccessBlock)success
+                                            onFailure:(FailureBlock)failure;
 
 @end
